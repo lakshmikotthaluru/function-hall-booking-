@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin: confirmed bookings</title>
+<style>body{font:15px system-ui;margin:20px;color:#2a1a2e}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f4ebdf}.scroll{overflow-x:auto}input,button{padding:8px;font:inherit}</style></head>
+<body><h1>Confirmed bookings</h1>
+<p><input id="k" type="password" placeholder="Admin key"> <button id="go">Load</button> <span id="e" style="color:#b3261e"></span></p>
+<div class="scroll"><table><thead><tr><th>Date</th><th>Hall</th><th>Event</th><th>Guests</th><th>Customer</th><th>Phone</th><th>Email</th><th>Paid</th><th>Balance due</th><th>Payment ID</th></tr></thead><tbody id="b"></tbody></table></div>
+<script>
+document.getElementById('go').onclick=async()=>{
+  const r=await fetch('/api/admin-bookings',{headers:{'x-admin-key':document.getElementById('k').value}});
+  const j=await r.json();document.getElementById('e').textContent=r.ok?'':j.error;if(!r.ok)return;
+  const t=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  document.getElementById('b').innerHTML=j.length?j.map(x=>`<tr><td>${t(x.event_date)}</td><td>${t(x.halls?.name)}</td><td>${t(x.event_type)}</td><td>${x.guests}</td><td>${t(x.customer_name)}</td><td>${t(x.customer_phone)}</td><td>${t(x.customer_email)}</td><td>₹${x.advance_amount.toLocaleString('en-IN')}</td><td>₹${x.balance_amount.toLocaleString('en-IN')}</td><td>${t(x.razorpay_payment_id)}</td></tr>`).join(''):'<tr><td colspan="10">No confirmed bookings yet.</td></tr>';
+};
+</script></body></html>

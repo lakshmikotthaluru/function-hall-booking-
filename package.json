@@ -1,0 +1,8 @@
+{
+  "name": "function-hall-booking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Online function hall booking with Razorpay payments (Vercel + Supabase)",
+  "engines": { "node": ">=18" },
+  "dependencies": { "@supabase/supabase-js": "^2.45.0" }
+}

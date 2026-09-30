@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book a Function Hall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#2a1a2e;--paper:#fbf7f2;--plum:#5b2a5e;--gold:#c8952b;--line:#e4d9cc;--ok:#1f7a4d;--bad:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 'Nunito Sans',system-ui,sans-serif}
+header{background:var(--plum);color:#fff;padding:48px 20px 40px}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+header .wrap{padding:0}
+h1{font:800 clamp(2rem,6vw,3.4rem)/1.1 Fraunces,serif;margin:0 0 10px}
+header p{margin:0;max-width:52ch;opacity:.9}
+h2{font:600 1.5rem Fraunces,serif;margin:36px 0 14px}
+.halls{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.hall{border:2px solid var(--line);background:#fff;padding:18px;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.hall:hover{border-color:var(--gold)}
+.hall[aria-pressed=true]{border-color:var(--plum);box-shadow:inset 0 0 0 1px var(--plum)}
+.hall b{font:600 1.2rem Fraunces,serif;display:block}
+.hall .price{color:var(--plum);font-weight:700;margin-top:8px}
+.hall small{color:#6d5f6f}
+form{display:grid;gap:14px;grid-template-columns:1fr 1fr;background:#fff;border:1px solid var(--line);padding:22px;border-radius:6px;margin-bottom:48px}
+label{display:grid;gap:4px;font-weight:600;font-size:.92rem}
+input,select{font:inherit;padding:10px;border:1px solid #cdbfb0;border-radius:4px;background:#fff}
+input:focus,select:focus,button:focus-visible{outline:3px solid var(--gold);outline-offset:1px}
+.full{grid-column:1/-1}
+#avail{min-height:1.5em;font-weight:700}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.summary{background:#f4ebdf;padding:16px;border-radius:4px}
+.summary div{display:flex;justify-content:space-between}
+.summary .due{font-weight:800;font-size:1.15rem;border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
+.pay{background:var(--plum);color:#fff;border:0;padding:14px;font:700 1.05rem 'Nunito Sans',sans-serif;border-radius:4px;cursor:pointer}
+.pay:disabled{opacity:.45;cursor:not-allowed}
+#msg{font-weight:700}
+.done{background:#fff;border:2px solid var(--ok);padding:24px;border-radius:6px;margin-top:32px}
+@media(max-width:600px){form{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>Book your function hall</h1><p>Pick a hall and date, pay a 30% advance online, and your date is confirmed instantly. Pay the balance at the venue.</p></div></header>
+<main class="wrap">
+<div id="done" class="done" hidden></div>
+<div id="flow">
+<h2>Choose a hall</h2>
+<div class="halls" id="halls"><p>Loading halls…</p></div>
+
+<h2>Your event</h2>
+<form id="f" novalidate>
+  <label>Event date<input type="date" id="date" required></label>
+  <label>Event type<select id="type"><option>Wedding</option><option>Reception</option><option>Engagement</option><option>Birthday</option><option>Corporate event</option><option>Other</option></select></label>
+  <div class="full" id="avail" aria-live="polite"></div>
+  <label>Full name<input id="name" autocomplete="name" required></label>
+  <label>Mobile number<input id="phone" inputmode="numeric" autocomplete="tel" placeholder="10-digit number" required></label>
+  <label>Email<input id="email" type="email" autocomplete="email" required></label>
+  <label>Number of guests<input id="guests" type="number" min="1" required></label>
+  <div class="summary full" id="sum" hidden></div>
+  <button class="pay full" id="pay" type="submit">Pay advance and confirm</button>
+  <div class="full" id="msg" role="alert"></div>
+</form>
+</div>
+</main>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+const $=id=>document.getElementById(id), inr=n=>'₹'+n.toLocaleString('en-IN');
+let hall=null, free=false;
+$('date').min=new Date(Date.now()+864e5).toISOString().slice(0,10);
+
+async function api(path,opts){const r=await fetch(path,opts);const t=await r.text();let j;try{j=JSON.parse(t)}catch(e){throw new Error('Server error ('+r.status+'). Open /api/health on your site to see what is missing.')}if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
+
+api('/api/halls').then(h=>{$('halls').innerHTML='';h.forEach(x=>{
+  const b=document.createElement('button');b.type='button';b.className='hall';b.setAttribute('aria-pressed','false');
+  b.innerHTML=`<b>${x.name}</b><small>${x.description||''}</small><div class="price">${inr(x.price_per_day)} per day · up to ${x.capacity} guests</div>`;
+  b.onclick=()=>{hall=x;document.querySelectorAll('.hall').forEach(e=>e.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');$('guests').max=x.capacity;check();};
+  $('halls').appendChild(b);});}).catch(e=>$('halls').textContent=e.message);
+
+async function check(){
+  free=false;$('avail').textContent='';
+  summary();
+  if(!hall||!$('date').value)return;
+  try{const r=await api(`/api/availability?hall_id=${hall.id}&date=${$('date').value}`);free=r.available;
+    $('avail').innerHTML=free?'<span class="ok">Available on this date</span>':'<span class="bad">Not available. Choose another date or hall.</span>';
+  }catch(e){$('avail').innerHTML=`<span class="bad">${e.message}</span>`}
+}
+function summary(){
+  if(!hall){$('sum').hidden=true;return}
+  const adv=Math.round(hall.price_per_day*hall.advance_percent/100);
+  $('sum').hidden=false;
+  $('sum').innerHTML=`<div><span>Hall rent</span><span>${inr(hall.price_per_day)}</span></div><div><span>Balance at venue</span><span>${inr(hall.price_per_day-adv)}</span></div><div class="due"><span>Pay now (${hall.advance_percent}% advance)</span><span>${inr(adv)}</span></div>`;
+}
+$('date').onchange=check;
+
+$('f').onsubmit=async e=>{
+  e.preventDefault();$('msg').textContent='';$('msg').className='full bad';
+  if(location.protocol==='file:')return $('msg').textContent='Open your deployed Vercel site. The /api routes do not work from a local file.';
+  if(typeof Razorpay==='undefined')return $('msg').textContent='Razorpay did not load. Check your internet connection or ad blocker, then reload.';
+  if(!hall)return $('msg').textContent='Choose a hall first.';
+  if(!$('date').value)return $('msg').textContent='Choose an event date.';
+  if(!free)return $('msg').textContent='This date is not available for this hall, or availability has not loaded. Choose another date.';
+  $('pay').disabled=true;
+  try{
+    const o=await api('/api/create-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      hall_id:hall.id,event_date:$('date').value,event_type:$('type').value,name:$('name').value,phone:$('phone').value,email:$('email').value,guests:$('guests').value})});
+    new Razorpay({key:o.key,amount:o.amount,currency:o.currency,order_id:o.order_id,name:'Function Hall Booking',
+      description:`${o.hall} on ${$('date').value}`,prefill:{name:o.name,email:o.email,contact:o.phone},theme:{color:'#5b2a5e'},
+      modal:{ondismiss:()=>{$('pay').disabled=false;$('msg').textContent='Payment cancelled. Your date is held for 15 minutes.'}},
+      handler:async resp=>{
+        try{await api('/api/verify-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(resp)});
+          $('flow').hidden=true;$('done').hidden=false;
+          $('done').innerHTML=`<h2 style="margin-top:0">Booking confirmed</h2><p><b>${o.hall}</b> on <b>${$('date').value}</b>.<br>Advance paid: <b>${inr(o.advance)}</b>. Balance at venue: <b>${inr(o.balance)}</b>.<br>Booking reference: <code>${o.booking_id}</code></p><p>Payment ID: <code>${resp.razorpay_payment_id}</code>. Save these details.</p>`;
+        }catch(err){$('msg').className='full bad';$('msg').textContent=err.message+' Payment ID: '+resp.razorpay_payment_id}}
+    }).open();
+  }catch(err){$('msg').className='full bad';$('msg').textContent=err.message;$('pay').disabled=false;check()}
+};
+</script>
+</body>
+</html>
